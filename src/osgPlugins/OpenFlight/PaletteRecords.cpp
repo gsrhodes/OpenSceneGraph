@@ -220,9 +220,9 @@ protected:
         material->setDiffuse (osg::Material::FRONT_AND_BACK,osg::Vec4(diffuse,alpha));
         material->setSpecular(osg::Material::FRONT_AND_BACK,osg::Vec4(specular,alpha));
         material->setEmission(osg::Material::FRONT_AND_BACK,osg::Vec4(emissive,alpha));
-
+        
         if (shininess>=0.0f)
-        {
+        {        
             material->setShininess(osg::Material::FRONT_AND_BACK,shininess);
         }
         else
@@ -276,7 +276,7 @@ protected:
             material->setEmission(osg::Material::FRONT_AND_BACK,osg::Vec4(emissive,alpha));
 
             if (shininess>=0.0f)
-            {
+            {        
                 material->setShininess(osg::Material::FRONT_AND_BACK,shininess);
             }
             else
@@ -329,9 +329,13 @@ protected:
         return osgWrapMode;
     }
 
-    osg::StateSet* readTexture(const std::string& filename, const Document& document) const
+    osg::StateSet* readTexture(const std::string& filename, Document& document) const
     {
-        osg::ref_ptr<osg::Image> image = osgDB::readRefImageFile(filename,document.getOptions());
+		osg::ref_ptr<osg::Image> image;
+		if (document.getTextureInArchive())
+			image = document.readArchiveImage(filename);
+		else
+			image = osgDB::readRefImageFile(filename, document.getOptions());
         if (!image) return NULL;
 
         // Create stateset to hold texture and attributes.
@@ -346,7 +350,7 @@ protected:
 
         // Read attribute file
         std::string attrname = filename + ".attr";
-        osg::ref_ptr<AttrData> attr = osgDB::readRefFile<AttrData>(attrname,document.getOptions());
+        osg::ref_ptr<AttrData> attr = dynamic_cast<AttrData*>(osgDB::readObjectFile(attrname,document.getOptions()));
         if (attr.valid())
         {
             // Wrap mode
@@ -482,8 +486,30 @@ protected:
         /*int32 y =*/ in.readInt32();
 
         // Need full path for unique key in local texture cache.
-        std::string pathname = osgDB::findDataFile(filename,document.getOptions());
-        if (pathname.empty())
+		std::string pathname;
+		if (document.getTextureInArchive())
+		{
+			if (document.MapTextureName2Archive(filename))
+			{
+				pathname = document.archive_findDataFile(filename);
+			}
+			else
+				pathname = "";
+		}
+		else if (document.getRemap2Directory())
+		{
+			if (document.MapTextureName2Directory(filename))
+			{
+				pathname = filename;
+			}
+			else
+				pathname = "";
+
+		}
+		else
+			pathname = osgDB::findDataFile(filename,document.getOptions());
+ 
+		if (pathname.empty())
         {
             OSG_WARN << "Can't find texture (" << index << ") " << filename << std::endl;
             return;
@@ -899,7 +925,7 @@ protected:
                 std::string vertexProgramFilePath = osgDB::findDataFile(vertexProgramFilename,document.getOptions());
                 if (!vertexProgramFilePath.empty())
                 {
-                    osg::ref_ptr<osg::Shader> vertexShader = osgDB::readRefShaderFile(osg::Shader::VERTEX, vertexProgramFilePath);
+                    osg::Shader* vertexShader = osg::Shader::readShaderFile(osg::Shader::VERTEX, vertexProgramFilePath);
                     if (vertexShader)
                         program->addShader( vertexShader );
                 }
@@ -913,7 +939,7 @@ protected:
                 std::string fragmentProgramFilePath = osgDB::findDataFile(fragmentProgramFilename,document.getOptions());
                 if (!fragmentProgramFilePath.empty())
                 {
-                    osg::ref_ptr<osg::Shader> fragmentShader = osgDB::readRefShaderFile(osg::Shader::FRAGMENT, fragmentProgramFilePath);
+                    osg::Shader* fragmentShader = osg::Shader::readShaderFile(osg::Shader::FRAGMENT, fragmentProgramFilePath);
                     if (fragmentShader)
                         program->addShader( fragmentShader );
                 }

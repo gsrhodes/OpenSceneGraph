@@ -12,7 +12,7 @@
 */
 
 //
-// OpenFlight loader for OpenSceneGraph
+// OpenFlight� loader for OpenSceneGraph
 //
 //  Copyright (C) 2005-2007  Brede Johansen
 //
@@ -174,7 +174,7 @@ public:
             std::string filename = node.getFileName(pos);
 
             // read external
-            osg::ref_ptr<osg::Node> external = osgDB::readRefNodeFile(filename,_options.get());
+            osg::ref_ptr<osg::Node> external = osgDB::readNodeFile(filename,_options.get());
             if (external.valid())
             {
                 if (_cloneExternalReferences)
@@ -356,7 +356,13 @@ class FLTReaderWriter : public ReaderWriter
                 document.setKeepExternalReferences((options->getOptionString().find("keepExternalReferences")!=std::string::npos));
                 OSG_DEBUG << readerMsg << "keepExternalReferences=" << document.getKeepExternalReferences() << std::endl;
 
-                document.setPreserveFace((options->getOptionString().find("preserveFace")!=std::string::npos));
+				document.setTextureInArchive((options->getOptionString().find("TextureInArchive") != std::string::npos));
+				OSG_DEBUG << readerMsg << "TextureInArchive=" << document.getTextureInArchive() << std::endl;
+
+				document.setRemap2Directory((options->getOptionString().find("Remap2Directory") != std::string::npos));
+				OSG_DEBUG << readerMsg << "Remap2Directory=" << document.getRemap2Directory() << std::endl;
+
+				document.setPreserveFace((options->getOptionString().find("preserveFace")!=std::string::npos));
                 OSG_DEBUG << readerMsg << "preserveFace=" << document.getPreserveFace() << std::endl;
 
                 document.setPreserveObject((options->getOptionString().find("preserveObject")!=std::string::npos));
@@ -374,8 +380,8 @@ class FLTReaderWriter : public ReaderWriter
                 document.setUseTextureAlphaForTransparancyBinning(options->getOptionString().find("noTextureAlphaForTransparancyBinning")==std::string::npos);
                 OSG_DEBUG << readerMsg << "noTextureAlphaForTransparancyBinning=" << !document.getUseTextureAlphaForTransparancyBinning() << std::endl;
 
-                document.setReadObjectRecordData(options->getOptionString().find("readObjectRecordData")!=std::string::npos);
-                OSG_DEBUG << readerMsg << "readObjectRecordData=" << document.getReadObjectRecordData() << std::endl;
+                document.setReadObjectRecordData(options->getOptionString().find("readObjectRecordData")==std::string::npos);
+                OSG_DEBUG << readerMsg << "readObjectRecordData=" << !document.getReadObjectRecordData() << std::endl;
 
                 document.setPreserveNonOsgAttrsAsUserData((options->getOptionString().find("preserveNonOsgAttrsAsUserData")!=std::string::npos));
                 OSG_DEBUG << readerMsg << "preserveNonOsgAttrsAsUserData=" << document.getPreserveNonOsgAttrsAsUserData() << std::endl;
@@ -417,6 +423,61 @@ class FLTReaderWriter : public ReaderWriter
                     if (pools->getShaderPool())
                         document.setShaderPool( pools->getShaderPool(), true );
                 }
+
+				if (document.getTextureInArchive())
+				{
+					//Set up to handle CDB models as per (CDB) specification
+					//Using this option overides the remap to directory option if both are set
+					osgDB::FilePathList dbpaths = options->getDatabasePathList();
+					for (osgDB::FilePathList::iterator dbt = dbpaths.begin(); dbt != dbpaths.end(); ++dbt)
+					{
+						std::string aname = *dbt;
+						//Make sure it is a zip file for now
+						//There is an osDB:: general test for being an archive
+						//that can be used if anything other than CDB needs this option in an openflight loader
+						//
+						unsigned int pos = aname.rfind(".zip");
+						if (pos == aname.length() - 4)
+						{
+							if (document.OpenArchive(aname))
+								break;
+						}
+					}
+					document.setRemap2Directory(false);
+				}
+				else if (document.getRemap2Directory())
+				{
+					osgDB::FilePathList dbpaths = options->getDatabasePathList();
+					if (dbpaths.size() >= 2)
+					{
+						std::string directory;
+						std::string fname;
+						bool have_dir = false;
+						bool have_fname = false;
+						for (osgDB::FilePathList::iterator dbt = dbpaths.begin(); dbt != dbpaths.end(); ++dbt)
+						{
+							std::string test = *dbt;
+							if (test.find("301_GSModelTexture") != std::string::npos)
+							{
+								directory = test;
+								have_dir = true;
+							}
+							else if (test.rfind(".flt") != std::string::npos)
+							{
+								fname = test;
+								have_fname = true;
+							}
+
+							if (have_dir && have_fname)
+							{
+								document.SetTexture2MapDirectory(directory, fname);
+								break;
+							}
+						}
+					}
+					else
+						document.setRemap2Directory(false);
+				}
             }
 
             const int RECORD_HEADER_SIZE = 4;
@@ -523,6 +584,9 @@ class FLTReaderWriter : public ReaderWriter
                     osgUtil::Optimizer::TESSELLATE_GEOMETRY |
                     osgUtil::Optimizer::STATIC_OBJECT_DETECTION);
             }
+
+			if (document.getTextureInArchive())
+				document.archiveRelease();
 
             return document.getHeaderNode();
         }
